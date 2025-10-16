@@ -7,6 +7,7 @@
 #include <thread>
 #include <chrono>
 #include <tchar.h>
+#include <functional>
 
 //imgui
 #include "imgui/imgui.h"
@@ -14,6 +15,7 @@
 #include "imgui/imgui_impl_win32.h"
 #include "FormattedInfo.h"
 #include "font.hpp"
+#include <unordered_map>
 
 #define GWLP_HWNDPARENT (-8)
 
@@ -270,7 +272,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show) {
 
 
 	ImGui::CreateContext();
-	ImGui::StyleColorsClassic();
+	ImGui::StyleColorsDark();
 
 	ImGui_ImplWin32_Init(window);
 	ImGui_ImplDX11_Init(device, device_context);
@@ -423,10 +425,53 @@ void Overlay_AddSection(const char* title, float windowWidth)
 	ImGui::Separator();
 	ImGui::Spacing();
 }
+/*
+void button_interactable(const char* label, const std::function<void()>& onClick) {
+	static std::unordered_map<const char*, bool> hovered_last_frame_map;
+	static std::unordered_map<const char*, bool> lmb_was_down_map;
+
+	bool& hovered_last_frame = hovered_last_frame_map[label];
+	bool& lmb_was_down = lmb_was_down_map[label];
+
+	ImVec2 buttonPos = ImGui::GetCursorScreenPos();
+
+	// Push hovered style if last frame was hovering
+	if (hovered_last_frame)
+		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
+
+	ImGui::Button(label);
+
+	if (hovered_last_frame)
+		ImGui::PopStyleColor();
+
+	ImVec2 buttonSize = ImGui::GetItemRectSize();
+
+	// Detect hover manually
+	POINT cursorPos;
+	GetCursorPos(&cursorPos);
+
+	bool hovered = cursorPos.x >= buttonPos.x && cursorPos.x <= buttonPos.x + buttonSize.x &&
+		cursorPos.y >= buttonPos.y && cursorPos.y <= buttonPos.y + buttonSize.y;
+
+	// Detect left mouse button state
+	bool lmb_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+
+	// Trigger callback on release while hovering
+	if (hovered && !lmb_down && lmb_was_down) {
+		onClick();
+	}
+
+	hovered_last_frame = hovered;
+	lmb_was_down = lmb_down;
+}
+*/
+
 
 void DrawOverlay() {
-	static int location = 1;
+	static bool hovered_last_frame = false;
+	static bool lmb_was_down = false;
 	ImGuiIO& io = ImGui::GetIO();
+
 	ImGuiWindowFlags window_flags =
 		ImGuiWindowFlags_NoDecoration |
 		ImGuiWindowFlags_AlwaysAutoResize |
@@ -438,7 +483,6 @@ void DrawOverlay() {
 		ImGuiWindowFlags_NoNavFocus |
 		ImGuiWindowFlags_NoMove;
 
-	///draggable/moveable
 	ImGuiWindowFlags window_flags2 =
 		ImGuiWindowFlags_NoDecoration |
 		ImGuiWindowFlags_AlwaysAutoResize |
@@ -451,17 +495,12 @@ void DrawOverlay() {
 	bool interact_keys_pressed =
 		(GetAsyncKeyState(VK_LCONTROL) & 0x8000) &&
 		(GetAsyncKeyState(VK_LSHIFT) & 0x8000);
+
 	ImGuiWindowFlags final_flags = interact_keys_pressed ? window_flags2 : window_flags;
 
-	const float PAD = 10.0f;
-	const ImGuiViewport* viewport = ImGui::GetMainViewport();
-	ImVec2 work_pos = viewport->WorkPos; // Use work area to avoid menu-bar/task-bar, if any!
-	ImVec2 work_size = viewport->WorkSize;
-	
 	ImGui::SetNextWindowBgAlpha(0.35f);
 	if (ImGui::Begin("##InfoOverlay", nullptr, final_flags))
 	{
-		// Center the "Common info" text
 		const char* title = "Desktop Metrics";
 		float windowWidth = ImGui::GetWindowSize().x;
 		float textWidth = ImGui::CalcTextSize(title).x;
@@ -471,17 +510,23 @@ void DrawOverlay() {
 		ImGui::Spacing();
 		ImGui::Separator();
 
-
 		ImGui::Text("Time: %s", FormattedInfo::GetFormattedTime().c_str());
 		ImGui::Text("Date: %s", FormattedInfo::GetFormattedDate().c_str());
-
 		ImGui::Text("CPU: %s", FormattedInfo::GetFormattedCPUUsage().c_str());
 		ImGui::Text("RAM: %s", FormattedInfo::GetFormattedRAMUsage().c_str());
-
 
 		Overlay_AddSection("Menu", windowWidth);
 
 		ImGui::Text("Overlay FPS: %.0f", io.Framerate);
+
+
+		//ImGui::Spacing();
+
+		/*button_interactable("button", []() {
+			//ShellExecuteW(NULL, NULL, L"shutdown.exe", L"/s /t 0", NULL, SW_HIDE);
+			MessageBoxA(NULL, "example", "Info", MB_OK);
+			});*/
+
 
 	}
 	ImGui::End();
