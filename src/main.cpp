@@ -15,6 +15,8 @@
 #include "FormattedInfo.h"
 #include "font.hpp"
 
+#define GWLP_HWNDPARENT (-8)
+
 //predefinitions
 void DrawOverlay();
 
@@ -22,21 +24,65 @@ bool ShouldShowOverlay() {
 	HWND fg = GetForegroundWindow();
 	if (!fg) return true;
 
-	// Ignore Progman / Shell windows
+	// Ignore desktop windows
 	HWND progman = FindWindow(L"Progman", nullptr);
 	HWND shell = GetShellWindow();
 	if (fg == progman || fg == shell) return true;
 
-	// Check window styles
-	LONG_PTR style = GetWindowLongPtr(fg, GWL_STYLE);
-	if ((style & WS_VISIBLE) && (style & WS_OVERLAPPEDWINDOW)) {
-		// A normal window is focused
-		return false;
+	// Check if window is minimized or invisible
+	if (!IsWindowVisible(fg) || IsIconic(fg))
+		return true;
+
+	// Get process name for safety (optional)
+	wchar_t title[256];
+	GetWindowTextW(fg, title, 256);
+
+	// If no title, likely system or background window
+	if (wcslen(title) == 0)
+		return true;
+
+	// Otherwise, a normal app window is focused — hide overlay
+	return false;
+}
+
+
+// BELOW ALL PROGRAMS, BUT ABOVE DESKTOP ICONS.
+// MAKE SURE TO CALL ShowWindow(window, SW_SHOW) or SW_SHOWNA to prevent it from activating (being above everything at first) in a loop as otherwise the window will be below the desktop
+// You cannot render below the desktop icons without using a 2D rendering API (GDI, Direct2D, etc...)
+bool AttachToDesktop(HWND hWnd)
+{
+
+
+	// Find the Progman window
+	HWND progman = FindWindowA("Progman", NULL);
+	HWND defView = NULL;
+
+	// Find SHELLDLL_DefView under Progman
+	if (progman)
+		defView = FindWindowExA(progman, NULL, "SHELLDLL_DefView", NULL);
+
+	// If not found, try under WorkerW windows
+	if (!defView)
+	{
+		HWND desktopHWnd = GetDesktopWindow();
+		HWND workerW = NULL;
+
+		do
+		{
+			workerW = FindWindowExA(desktopHWnd, workerW, "WorkerW", NULL);
+			defView = FindWindowExA(workerW, NULL, "SHELLDLL_DefView", NULL);
+		} while (!defView && workerW);
 	}
 
-	// Otherwise, show overlay
+	if (!defView)
+		return false;
+
+	// Set SHELLDLL_DefView as parent of hWnd
+	SetWindowLongPtrA(hWnd, GWLP_HWNDPARENT, (LONG_PTR)defView);
+
 	return true;
 }
+
 
 
 
@@ -67,6 +113,13 @@ LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM w_param, LPA
 	}
 
 	switch (message) {
+	case WM_SYSCOMMAND: //this doesnt even work!!!!
+		if ((w_param & 0xFFF0) == SC_MINIMIZE) {
+			return 0L;
+		}
+		break;
+
+
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0L;
@@ -112,7 +165,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show) {
 
 
 	const HWND window = CreateWindowExW(
-		WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
+		WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
 		wc.lpszClassName,
 		L"DesktopMetrics",
 		WS_POPUP,
@@ -127,8 +180,16 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show) {
 	);
 
 	SetLayeredWindowAttributes(window, RGB(0, 0, 0), BYTE(255), LWA_ALPHA);
-
 	
+	HWND progman = FindWindowA("Progman", nullptr);
+	if (!progman)
+		return false;
+
+	// Set Progman as the parent of hWnd
+	SetWindowLongPtrA(window, GWLP_HWNDPARENT, (LONG_PTR)progman);
+
+	ShowWindow(window, SW_SHOWNA);
+	//SetWindowPos(window, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
 	{
 		RECT client_area{};
@@ -247,6 +308,8 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show) {
 		bool interact_keys_pressed =
 			(GetAsyncKeyState(VK_LCONTROL) & 0x8000) &&
 			(GetAsyncKeyState(VK_LSHIFT) & 0x8000);
+
+		/*
 		bool showOverlay = ShouldShowOverlay();
 
 		if (showOverlay && !windowVisible) {
@@ -256,8 +319,9 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show) {
 		else if (!showOverlay && windowVisible) {
 			ShowWindow(window, SW_HIDE);
 			windowVisible = false;
-		}
+		}*/
 
+		//ShowWindow(window, SW_SHOWNA); // needed otherwise will dissappear from the desktop
 
 
 
